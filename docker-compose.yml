@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: sap-postgres
+    environment:
+      POSTGRES_DB: sapdb
+      POSTGRES_USER: sapuser
+      POSTGRES_PASSWORD: sappassword
+    volumes:
+      - sap_pgdata:/var/lib/postgresql/data
+      - ./seed/seed.sql:/docker-entrypoint-initdb.d/seed.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sapuser -d sapdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: sap-app
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: sapuser
+      DB_PASSWORD: sappassword
+      DB_NAME: sapdb
+      APP_PORT: 8081
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  sap_pgdata:

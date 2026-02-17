@@ -1,0 +1,8 @@
+.git
+.air.toml
+tmp
+bin
+Dockerfile
+docker-compose.yml
+*.sql
+*.md
