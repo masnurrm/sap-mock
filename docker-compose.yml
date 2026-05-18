@@ -27,6 +27,7 @@ services:
       DB_PASSWORD: sappassword
       DB_NAME: sapdb
       APP_PORT: 8081
+      APPINSIGHTS_INSTRUMENTATIONKEY: ""
     ports:
       - "8081:8081"
     depends_on:

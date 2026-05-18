@@ -4,13 +4,43 @@ import (
     "log"
     "net/http"
     "os"
+    "strconv"
     "time"
 
     "github.com/go-chi/chi/v5"
     "github.com/go-chi/chi/v5/middleware"
+    "github.com/microsoft/ApplicationInsights-Go/appinsights"
     "sap-mock/db"
     "sap-mock/handler"
 )
+
+type statusWriter struct {
+    http.ResponseWriter
+    status int
+}
+
+func (w *statusWriter) WriteHeader(status int) {
+    w.status = status
+    w.ResponseWriter.WriteHeader(status)
+}
+
+func appInsightsMiddleware(client appinsights.TelemetryClient) func(http.Handler) http.Handler {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+            start := time.Now()
+            next.ServeHTTP(sw, r)
+            duration := time.Since(start)
+
+            reqTelemetry := appinsights.NewRequestTelemetry(r.Method, r.URL.String(), duration, strconv.Itoa(sw.status))
+            reqTelemetry.Name = r.Method + " " + r.URL.Path
+            reqTelemetry.Source = r.RemoteAddr
+            reqTelemetry.Properties["host"] = r.Host
+            reqTelemetry.Properties["path"] = r.URL.Path
+            client.Track(reqTelemetry)
+        })
+    }
+}
 
 func main() {
     conn, err := db.NewConnection()
@@ -26,10 +56,21 @@ func main() {
         time.Sleep(2 * time.Second)
     }
 
+    ikey := os.Getenv("APPINSIGHTS_INSTRUMENTATIONKEY")
+    var aiClient appinsights.TelemetryClient
+    if ikey != "" {
+        aiClient = appinsights.NewTelemetryClient(ikey)
+        defer aiClient.Channel().Flush()
+    }
+
     r := chi.NewRouter()
     r.Use(middleware.Logger)
     r.Use(middleware.Recoverer)
     r.Use(middleware.SetHeader("Content-Type", "application/json"))
+
+    if aiClient != nil {
+        r.Use(appInsightsMiddleware(aiClient))
+    }
 
     // Health check
     r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
